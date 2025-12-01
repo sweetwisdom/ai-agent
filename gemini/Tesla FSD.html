@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tesla FSD Visualization Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap');
+        
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Inter', sans-serif;
+            color: white;
+            user-select: none;
+        }
+
+        /* UI Overlay Layer */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+        }
+
+        /* Left Control Panel */
+        .control-panel {
+            width: 30%;
+            min-width: 300px;
+            height: 100%;
+            background: linear-gradient(to right, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.8) 100%);
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            pointer-events: auto;
+            backdrop-filter: blur(10px);
+            border-right: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 10px 0 30px rgba(0,0,0,0.5);
+        }
+
+        /* Status Header */
+        .status-header {
+            margin-bottom: 2rem;
+        }
+
+        .speed-unit { font-size: 1.5rem; color: #888; font-weight: 300; }
+        .speed-val { font-size: 5rem; font-weight: 500; letter-spacing: -2px; line-height: 1; }
+
+        .limit-badge {
+            border: 2px solid #666;
+            border-radius: 50%;
+            width: 40px; height: 40px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.9rem; color: #888; margin-left: 1rem;
+        }
+
+        /* Steering Wheel Icon */
+        .autopilot-wheel {
+            width: 40px; height: 40px;
+            opacity: 0.3;
+            transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .autopilot-wheel.active {
+            opacity: 1; color: #3b82f6;
+            filter: drop-shadow(0 0 10px rgba(59, 130, 246, 0.6));
+            transform: scale(1.1) rotate(0deg);
+            animation: steer-idle 4s ease-in-out infinite;
+        }
+
+        @keyframes steer-idle {
+            0%, 100% { transform: scale(1.1) rotate(0deg); }
+            50% { transform: scale(1.1) rotate(2deg); }
+        }
+
+        /* Simulation Controls */
+        .sim-controls {
+            margin-top: auto;
+            background: rgba(255,255,255,0.05);
+            padding: 1.5rem;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .btn-sim {
+            background: rgba(50, 50, 50, 0.8);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: white; padding: 0.8rem; border-radius: 8px;
+            width: 100%; margin-bottom: 0.5rem; cursor: pointer;
+            transition: all 0.2s; font-size: 0.9rem;
+        }
+        .btn-sim:hover { background: rgba(70, 70, 70, 0.9); }
+        .btn-primary { background: #3b82f6; border: none; font-weight: 600; }
+        .btn-primary:hover { background: #2563eb; }
+
+        /* Visualization Area Overlay */
+        .viz-overlay { flex: 1; position: relative; }
+
+        /* Top Bar Messages */
+        .message-toast {
+            position: absolute; top: 3rem; left: 50%; transform: translateX(-50%);
+            background: rgba(20, 20, 20, 0.95); padding: 0.8rem 1.5rem;
+            border-radius: 8px; font-size: 0.9rem; display: flex; align-items: center;
+            gap: 12px; opacity: 0; transition: opacity 0.3s;
+            border: 1px solid #333; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+
+        /* Loading Screen */
+        #loader {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; display: flex; justify-content: center; align-items: center;
+            z-index: 100; flex-direction: column;
+        }
+        .tesla-T { width: 60px; height: 60px; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+
+    <!-- Three.js Canvas Container -->
+    <div id="canvas-container" class="absolute inset-0 z-0"></div>
+
+    <!-- UI Overlay -->
+    <div id="ui-layer">
+        
+        <!-- Left Panel -->
+        <div class="control-panel">
+            <div class="status-header flex flex-col">
+                <div class="flex items-center mb-2">
+                    <span class="text-gray-400 text-sm tracking-widest font-semibold uppercase">Autopilot</span>
+                    <div id="wheel-icon" class="autopilot-wheel ml-auto text-gray-500">
+                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12c0 5.52 4.48 10 10 10s10-4.48 10-10c0-5.52-4.48-10-10-10zm0 18c-4.41 0-8-3.59-8-8 0-.58.06-1.14.18-1.68l2.25 3.38c.32.48.86.77 1.44.77h8.26c.58 0 1.12-.29 1.44-.77l2.25-3.38c.12.54.18 1.1.18 1.68 0 4.41-3.59 8-8 8z"/></svg>
+                    </div>
+                </div>
+                
+                <div class="flex items-baseline mt-4">
+                    <span id="speed-display" class="speed-val">0</span>
+                    <span class="speed-unit ml-2">km/h</span>
+                    <div class="limit-badge">80</div>
+                </div>
+                
+                <div class="h-1 w-full bg-gray-800 rounded mt-6 overflow-hidden flex relative">
+                    <div id="regen-bar" class="h-full bg-gray-500 w-0 absolute right-1/2 transition-all duration-100"></div>
+                    <div id="power-bar" class="h-full bg-white w-0 absolute left-1/2 transition-all duration-100"></div>
+                </div>
+                <div class="flex justify-between text-xs text-gray-500 mt-1 px-1">
+                    <span>R</span><span>N</span><span class="text-white font-bold">D</span><span>P</span>
+                </div>
+            </div>
+
+            <div class="space-y-4 mb-8 text-sm text-gray-400">
+                <div class="flex justify-between border-b border-gray-800 pb-2">
+                    <span>跟车距离</span>
+                    <span id="distance-val" class="text-white font-mono">-- m</span>
+                </div>
+                <div class="flex justify-between border-b border-gray-800 pb-2">
+                    <span>感知目标</span>
+                    <span id="object-count" class="text-white font-mono">0</span>
+                </div>
+                <div class="flex justify-between border-b border-gray-800 pb-2">
+                    <span>路况模式</span>
+                    <span id="traffic-mode" class="text-blue-400 font-mono">自动</span>
+                </div>
+            </div>
+
+            <div class="sim-controls">
+                <button id="btn-toggle-fsd" class="btn-sim btn-primary">开启 FSD Beta</button>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="App.toggleAutoTraffic()" class="btn-sim text-xs bg-gray-700">自动生成: <span id="auto-status" class="text-green-400">ON</span></button>
+                    <button onclick="App.spawnTraffic('car')" class="btn-sim text-xs">+ 干扰车辆</button>
+                </div>
+                <p class="text-xs text-gray-600 mt-2 text-center">鼠标拖拽旋转 · 滚轮缩放</p>
+            </div>
+        </div>
+
+        <!-- Right Side Overlays -->
+        <div class="viz-overlay">
+            <div id="toast-fcw" class="message-toast border-red-900 bg-red-900/90 text-white">
+                <span class="text-2xl animate-ping">⚠️</span> 
+                <div>
+                    <div class="font-bold text-red-100">前方碰撞预警</div>
+                    <div class="text-xs text-red-300">正在紧急制动</div>
+                </div>
+            </div>
+            <div id="toast-ap" class="message-toast border-blue-900 bg-blue-900/90 text-blue-100">
+                <span class="text-xl">🤖</span> FSD 全自动驾驶已激活
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading -->
+    <div id="loader">
+        <svg class="tesla-T" viewBox="0 0 342 342" fill="white">
+            <path d="M171.1 180.7l-159-92.4C4.3 84 0 77.2 0 69.8c0-7.5 4.3-14.3 12.1-18.6L163.6 3.5c4.7-2.6 10.3-2.6 15 0L330 51.2c7.8 4.3 12.1 11.1 12.1 18.6 0 7.4-4.3 14.2-12.1 18.6l-158.9 92.3z"/>
+        </svg>
+        <div class="text-gray-500 text-sm font-mono animate-pulse">Initializing Neural Net...</div>
+    </div>
+
+<script>
+/**
+ * TESLA FSD VISUALIZER PRO - THREE.JS
+ */
+
+const CONFIG = {
+    laneWidth: 4.5,
+    fov: 40,
+    camHeight: 14,
+    camDist: -22,
+    lookAtOffset: 15,
+    fogColor: 0x0a0a0a,
+    pathColor: 0x2563eb,
+    carColor: 0x999999
+};
+
+class FSDSim {
+    constructor() {
+        this.container = document.getElementById('canvas-container');
+        this.width = window.innerWidth;
+        this.height = window.innerHeight;
+
+        // --- Logic State ---
+        this.speed = 0;
+        this.targetSpeed = 0;
+        this.maxSpeed = 1.8; // Approx 80km/h relative
+        this.fsdActive = false;
+        this.autoTraffic = true;
+        
+        this.obstacles = [];
+        this.roadMarkings = [];
+        this.particles = []; // Dust/Wind effect
+        
+        this.laneOffset = 0;
+        this.lastSpawnTime = 0;
+        
+        // Curve Simulation
+        this.roadCurve = 0;
+        this.targetCurve = 0;
+        this.curveTime = 0;
+
+        // --- Three.js Setup ---
+        this.initScene();
+        this.initLights();
+        this.initRoad();
+        this.initCar();
+        this.initPathRibbon();
+        this.initParticles();
+        
+        // --- Interactions ---
+        window.addEventListener('resize', this.onResize.bind(this));
+        document.getElementById('btn-toggle-fsd').addEventListener('click', this.toggleFSD.bind(this));
+        
+        // Remove loader
+        setTimeout(() => { document.getElementById('loader').style.display = 'none'; }, 1000);
+
+        this.animate();
+    }
+
+    initScene() {
+        this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color(CONFIG.fogColor);
+        this.scene.fog = new THREE.FogExp2(CONFIG.fogColor, 0.02);
+
+        this.camera = new THREE.PerspectiveCamera(CONFIG.fov, this.width / this.height, 0.1, 200);
+        this.camera.position.set(0, CONFIG.camHeight, CONFIG.camDist);
+        this.camera.lookAt(0, 0, CONFIG.lookAtOffset);
+
+        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        this.renderer.setSize(this.width, this.height);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.container.appendChild(this.renderer.domElement);
+
+        // Simple mouse interaction
+        this.mouseX = 0;
+        this.targetCamX = 0;
+        document.addEventListener('mousemove', (e) => {
+            this.mouseX = (e.clientX - window.innerWidth / 2) * 0.001;
+        });
+    }
+
+    initLights() {
+        const ambientLight = new THREE.AmbientLight(0x404040, 3.5); 
+        this.scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(20, 40, 20);
+        dirLight.castShadow = true;
+        this.scene.add(dirLight);
+
+        // Headlights
+        const spotLight = new THREE.SpotLight(0xffffff, 8, 80, 0.6, 0.5, 1);
+        spotLight.position.set(0, 3, 2);
+        spotLight.target.position.set(0, 0, 40);
+        this.scene.add(spotLight);
+        this.scene.add(spotLight.target);
+    }
+
+    initCar() {
+        this.carGroup = new THREE.Group();
+
+        // Materials
+        const bodyMat = new THREE.MeshStandardMaterial({ color: CONFIG.carColor, roughness: 0.3, metalness: 0.7 });
+        const glassMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.0, metalness: 1.0 });
+        const tailLightMat = new THREE.MeshBasicMaterial({ color: 0x330000 }); // Off
+
+        // Chassis
+        const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.7, 4.6), bodyMat);
+        chassis.position.y = 0.6;
+        
+        // Cabin
+        const cabinGeo = new THREE.BoxGeometry(1.7, 0.8, 2.4);
+        const pos = cabinGeo.attributes.position;
+        for(let i=0; i<pos.count; i++) {
+            if(pos.getY(i) > 0) {
+                pos.setX(i, pos.getX(i) * 0.8); // Taper
+                pos.setZ(i, pos.getZ(i) * 0.85);
+            }
+        }
+        cabinGeo.computeVertexNormals();
+        const cabin = new THREE.Mesh(cabinGeo, glassMat);
+        cabin.position.set(0, 1.4, -0.2);
+
+        // Wheels
+        const wheelGeo = new THREE.CylinderGeometry(0.38, 0.38, 0.25, 24);
+        wheelGeo.rotateZ(Math.PI/2);
+        const wheelMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
+        
+        [ [-0.95, 1.6], [0.95, 1.6], [-0.95, -1.6], [0.95, -1.6] ].forEach(p => {
+            const w = new THREE.Mesh(wheelGeo, wheelMat);
+            w.position.set(p[0], 0.38, p[1]);
+            this.carGroup.add(w);
+        });
+
+        // Brake Lights
+        this.brakeLightMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.15), tailLightMat);
+        this.brakeLightMesh.position.set(0, 0.8, -2.31);
+        this.brakeLightMesh.rotation.y = Math.PI;
+        this.carGroup.add(this.brakeLightMesh);
+
+        this.carGroup.add(chassis);
+        this.carGroup.add(cabin);
+        this.scene.add(this.carGroup);
+    }
+
+    initRoad() {
+        // Ground
+        const ground = new THREE.Mesh(
+            new THREE.PlaneGeometry(300, 300),
+            new THREE.MeshStandardMaterial({ color: 0x080808, roughness: 0.9 })
+        );
+        ground.rotation.x = -Math.PI/2;
+        ground.position.y = -0.1;
+        this.scene.add(ground);
+
+        // Lane markings pool
+        this.laneLinesGroup = new THREE.Group();
+        this.scene.add(this.laneLinesGroup);
+
+        for(let i=0; i<60; i++) {
+            const geo = new THREE.BoxGeometry(0.15, 0.05, 3);
+            const mat = new THREE.MeshBasicMaterial({ color: 0x888888 });
+            const mesh = new THREE.Mesh(geo, mat);
+            // Store original Z for looping
+            mesh.userData = { baseZ: i * 6, laneIndex: i%2 }; 
+            this.laneLinesGroup.add(mesh);
+            this.roadMarkings.push(mesh);
+        }
+    }
+
+    initPathRibbon() {
+        // High res plane for smooth curve
+        const geometry = new THREE.PlaneGeometry(1.6, 60, 20, 60);
+        geometry.rotateX(-Math.PI / 2);
+        geometry.translate(0, 0.05, 30); // Start at car, go forward
+
+        const material = new THREE.MeshBasicMaterial({
+            color: CONFIG.pathColor,
+            transparent: true,
+            opacity: 0.3,
+            side: THREE.DoubleSide,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+
+        this.pathMesh = new THREE.Mesh(geometry, material);
+        this.scene.add(this.pathMesh);
+        this.pathBasePositions = geometry.attributes.position.clone();
+    }
+    
+    initParticles() {
+        // Floating dust to give sense of speed
+        const geo = new THREE.BufferGeometry();
+        const pos = [];
+        for(let i=0; i<200; i++) {
+            pos.push((Math.random()-0.5)*40, Math.random()*10, Math.random()*100);
+        }
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        const mat = new THREE.PointsMaterial({ color: 0x555555, size: 0.1, transparent: true });
+        this.particleSystem = new THREE.Points(geo, mat);
+        this.scene.add(this.particleSystem);
+    }
+
+    // --- Labels & Sprites ---
+
+    createDistanceLabel(text) {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 128; 
+        canvas.height = 64;
+        
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.roundRect(0, 0, 128, 64, 10);
+        ctx.fill();
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 4;
+        ctx.strokeRect(2,2,124,60);
+        
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 32px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, 64, 32);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true });
+        const sprite = new THREE.Sprite(spriteMat);
+        sprite.scale.set(3, 1.5, 1);
+        return sprite;
+    }
+
+    updateLabel(obs, dist) {
+        if (!obs.label) {
+            obs.label = this.createDistanceLabel(Math.floor(dist) + 'm');
+            this.scene.add(obs.label);
+        }
+        
+        // Update texture if distance changes significantly (optimization)
+        if (Math.abs(obs.lastLabelDist - dist) > 1) {
+             const ctx = obs.label.material.map.image.getContext('2d');
+             ctx.clearRect(0,0,128,64);
+             
+             // Dynamic color based on risk
+             ctx.fillStyle = dist < 20 ? 'rgba(200,0,0,0.8)' : 'rgba(0,0,0,0.6)';
+             ctx.beginPath();
+             ctx.roundRect(0, 0, 128, 64, 12);
+             ctx.fill();
+             
+             ctx.fillStyle = 'white';
+             ctx.fillText(Math.floor(dist) + 'm', 64, 32);
+             obs.label.material.map.needsUpdate = true;
+             obs.lastLabelDist = dist;
+        }
+
+        // Position above car
+        obs.label.position.set(obs.mesh.position.x, obs.mesh.position.y + 2.5, obs.mesh.position.z);
+        
+        // Hide if too far
+        obs.label.visible = dist < 100;
+    }
+
+    // --- Logic ---
+
+    toggleAutoTraffic() {
+        this.autoTraffic = !this.autoTraffic;
+        const el = document.getElementById('auto-status');
+        el.innerText = this.autoTraffic ? "ON" : "OFF";
+        el.className = this.autoTraffic ? "text-green-400" : "text-red-400";
+    }
+
+    toggleFSD() {
+        this.fsdActive = !this.fsdActive;
+        const btn = document.getElementById('btn-toggle-fsd');
+        const icon = document.getElementById('wheel-icon');
+        const toast = document.getElementById('toast-ap');
+        
+        if (this.fsdActive) {
+            btn.innerText = "接管车辆 (关闭 FSD)";
+            btn.className = "btn-sim bg-red-600 hover:bg-red-500 font-bold";
+            icon.classList.add('active');
+            toast.style.opacity = 1;
+            setTimeout(() => toast.style.opacity = 0, 3000);
+            this.targetSpeed = this.maxSpeed;
+        } else {
+            btn.innerText = "开启 FSD Beta";
+            btn.className = "btn-sim btn-primary";
+            icon.classList.remove('active');
+            this.targetSpeed = 0; 
+        }
+    }
+
+    spawnTraffic(type) {
+        let geometry, material, yPos;
+        
+        if (type === 'car') {
+            geometry = new THREE.BoxGeometry(1.8, 1.4, 4.5);
+            material = new THREE.MeshStandardMaterial({ color: 0x444444, transparent: true, opacity: 0.95 });
+            yPos = 0.7;
+        } else { // Cone
+            geometry = new THREE.ConeGeometry(0.3, 0.8, 16);
+            material = new THREE.MeshStandardMaterial({ color: 0xff6600, emissive: 0xff4400, emissiveIntensity: 0.5 });
+            yPos = 0.4;
+        }
+
+        const mesh = new THREE.Mesh(geometry, material);
+        
+        // Random lane position
+        const laneDir = Math.random() > 0.5 ? 1 : -1;
+        const laneX = laneDir * CONFIG.laneWidth; 
+        const zPos = 120 + Math.random() * 40; // Spawn far ahead
+
+        mesh.position.set(laneX, yPos, zPos);
+        this.scene.add(mesh);
+
+        // Random speed for cars (slower than player max)
+        const trafficSpeed = type === 'car' ? 0.8 + Math.random() * 0.5 : 0;
+
+        this.obstacles.push({
+            mesh: mesh,
+            speed: trafficSpeed,
+            type: type,
+            distance: zPos,
+            laneX: laneX, // Store base lane X for curve calculation
+            lastLabelDist: -1
+        });
+    }
+
+    updatePhysics() {
+        const now = Date.now();
+
+        // 1. Auto Traffic Spawner
+        if (this.fsdActive && this.autoTraffic && this.speed > 0.5) {
+            // Spawn every 2-4 seconds roughly
+            if (now - this.lastSpawnTime > 2000 + Math.random() * 2000) {
+                // 30% chance of cone, 70% car
+                const type = Math.random() > 0.7 ? 'cone' : 'car';
+                this.spawnTraffic(type);
+                this.lastSpawnTime = now;
+            }
+        }
+
+        // 2. Road Curvature Logic
+        // Slowly drift the curve target
+        this.curveTime += 0.005;
+        this.targetCurve = Math.sin(this.curveTime * 0.5) * 0.003; // Simplex noise-ish
+        this.roadCurve += (this.targetCurve - this.roadCurve) * 0.02; // Smooth Lerp
+
+        let nearestDist = 999;
+        let collisionWarning = false;
+
+        // 3. Move Obstacles & Apply Curve
+        for (let i = this.obstacles.length - 1; i >= 0; i--) {
+            const obs = this.obstacles[i];
+            
+            // Move in Z (relative speed)
+            obs.distance -= (this.speed - obs.speed);
+            
+            // Apply X Curve: x = base + (dist^2 * curve)
+            // This creates the visual effect of the road bending
+            const curveOffset = Math.pow(Math.max(0, obs.distance), 1.8) * this.roadCurve;
+            obs.mesh.position.z = obs.distance;
+            obs.mesh.position.x = obs.laneX + curveOffset;
+
+            // Update Label
+            this.updateLabel(obs, obs.distance);
+
+            // Collision Detection (Same lane check simplified)
+            // Check if object is roughly in front of us (Curve adjusted)
+            // If car is at x=0, and object is at calculated curve pos, it is "in lane"
+            const myPredictedX = Math.pow(Math.max(0, obs.distance), 1.8) * this.roadCurve;
+            const lateralDist = Math.abs(obs.mesh.position.x - myPredictedX);
+
+            if (lateralDist < 2.5 && obs.distance > -5) {
+                if (obs.distance < nearestDist) nearestDist = obs.distance;
+            }
+
+            // Cleanup
+            if (obs.distance < -20) {
+                if(obs.label) this.scene.remove(obs.label);
+                this.scene.remove(obs.mesh);
+                this.obstacles.splice(i, 1);
+            }
+        }
+
+        // 4. Car Physics (ACC)
+        if (this.fsdActive) {
+            const safeDist = 40;
+            const criticalDist = 15;
+
+            if (nearestDist < criticalDist) {
+                // AEB
+                this.targetSpeed = 0;
+                collisionWarning = true;
+            } else if (nearestDist < safeDist) {
+                // Match speed roughly
+                const leadCarSpeed = this.obstacles[0]?.speed || 0;
+                this.targetSpeed = leadCarSpeed; 
+            } else {
+                this.targetSpeed = this.maxSpeed;
+            }
+        } else {
+             // Manual friction
+             if(this.speed > 0) this.targetSpeed = 0;
+        }
+
+        // Apply Speed
+        const accel = this.targetSpeed > this.speed ? 0.02 : 0.05;
+        this.speed += (this.targetSpeed - this.speed) * accel;
+        if (this.speed < 0) this.speed = 0;
+
+        // 5. Update Road Markings (Scrolling + Curve)
+        this.laneOffset += this.speed;
+        this.roadMarkings.forEach((mesh) => {
+            // Infinite scroll logic
+            let z = mesh.userData.baseZ - (this.laneOffset % 50); 
+            if (z < -10) z += 60; // Wrap around
+            
+            // Base X
+            const baseX = mesh.userData.laneIndex === 0 ? -CONFIG.laneWidth : CONFIG.laneWidth;
+            
+            // Curve X
+            // Only curve positive Z to keep rear view somewhat straight or full curve?
+            // Let's full curve for consistency
+            const zForCurve = Math.max(0, z);
+            const curveX = Math.pow(zForCurve, 1.8) * this.roadCurve;
+            
+            mesh.position.z = z;
+            mesh.position.x = baseX + curveX;
+            
+            // Rotate to follow tangent (derivative of x = z^2*k is dx/dz = 2zk)
+            mesh.rotation.y = Math.atan(1.8 * Math.pow(zForCurve, 0.8) * this.roadCurve);
+        });
+
+        // 6. Path Ribbon Deform
+        const pos = this.pathMesh.geometry.attributes.position;
+        const base = this.pathBasePositions;
+        for(let i=0; i<pos.count; i++) {
+            const z = base.getZ(i);
+            const x = base.getX(i);
+            
+            // Apply same curve logic as road
+            const curveOffset = Math.pow(z, 1.8) * this.roadCurve;
+            pos.setX(i, x + curveOffset);
+        }
+        pos.needsUpdate = true;
+
+        // 7. Particles (Wind)
+        const pPos = this.particleSystem.geometry.attributes.position;
+        for(let i=0; i<pPos.count; i++) {
+            let z = pPos.getZ(i);
+            z -= (this.speed * 2); // Particles fly past fast
+            if (z < -10) z = 100;
+            pPos.setZ(i, z);
+        }
+        pPos.needsUpdate = true;
+
+        return { nearestDist, collisionWarning };
+    }
+
+    updateUI(state) {
+        // Speed
+        const kmh = Math.floor(this.speed * 60);
+        document.getElementById('speed-display').innerText = kmh;
+        
+        // Power Bars
+        const pBar = document.getElementById('power-bar');
+        const rBar = document.getElementById('regen-bar');
+        
+        if (this.speed < this.targetSpeed - 0.1) {
+            pBar.style.width = '30%'; rBar.style.width = '0';
+        } else if (this.speed > this.targetSpeed + 0.1) {
+            pBar.style.width = '0'; rBar.style.width = '20%'; // Braking/Regen
+        } else {
+            pBar.style.width = '0'; rBar.style.width = '0';
+        }
+
+        // Brake Lights
+        if (this.speed > this.targetSpeed + 0.1) {
+            this.brakeLightMesh.material.color.setHex(0xff0000); // Bright Red
+        } else {
+            this.brakeLightMesh.material.color.setHex(0x330000); // Dim
+        }
+
+        // Warnings
+        document.getElementById('toast-fcw').style.opacity = state.collisionWarning ? 1 : 0;
+        document.getElementById('distance-val').innerText = state.nearestDist > 100 ? "-- m" : Math.floor(state.nearestDist) + " m";
+        document.getElementById('object-count').innerText = this.obstacles.length;
+    }
+
+    animate() {
+        requestAnimationFrame(this.animate.bind(this));
+        
+        const state = this.updatePhysics();
+        this.updateUI(state);
+
+        // Camera Follow (Smooth Lerp)
+        this.targetCamX += (this.mouseX - this.targetCamX) * 0.1;
+        // Add curve influence to camera to "look into the turn"
+        const curveLook = this.roadCurve * 1000; 
+        this.camera.position.x = this.targetCamX + curveLook;
+        this.camera.lookAt(curveLook, 0, CONFIG.lookAtOffset);
+
+        this.renderer.render(this.scene, this.camera);
+    }
+
+    onResize() {
+        this.width = window.innerWidth;
+        this.height = window.innerHeight;
+        this.camera.aspect = this.width / this.height;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(this.width, this.height);
+    }
+}
+
+// Start
+const App = new FSDSim();
+
+</script>
+</body>
+</html>
