@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理仪表板 - Dashboard</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        .sidebar-transition {
+            transition: transform 0.3s ease;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div id="app" class="flex h-screen overflow-hidden">
+        <!-- 侧边栏 -->
+        <aside
+            :class="[
+                'bg-indigo-900 text-white w-64 space-y-6 py-7 px-2 absolute inset-y-0 left-0 transform sidebar-transition md:relative md:translate-x-0',
+                sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+            ]"
+        >
+            <!-- Logo -->
+            <div class="flex items-center space-x-2 px-4">
+                <i class="fas fa-chart-line text-2xl"></i>
+                <span class="text-2xl font-extrabold">Dashboard</span>
+            </div>
+
+            <!-- 导航菜单 -->
+            <nav class="space-y-2">
+                <a
+                    v-for="item in menuItems"
+                    :key="item.name"
+                    @click.prevent="currentPage = item.name"
+                    href="#"
+                    :class="[
+                        'flex items-center space-x-3 py-3 px-4 rounded transition duration-200',
+                        currentPage === item.name
+                            ? 'bg-indigo-700 text-white'
+                            : 'text-indigo-100 hover:bg-indigo-800'
+                    ]"
+                >
+                    <i :class="item.icon"></i>
+                    <span>{{ item.label }}</span>
+                </a>
+            </nav>
+
+            <!-- 底部用户信息 -->
+            <div class="absolute bottom-0 left-0 right-0 p-4 bg-indigo-950">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center">
+                        <i class="fas fa-user"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm font-medium">管理员</p>
+                        <p class="text-xs text-indigo-300">admin@example.com</p>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- 主内容区 -->
+        <div class="flex-1 flex flex-col overflow-hidden">
+            <!-- 顶部导航栏 -->
+            <header class="bg-white shadow-md">
+                <div class="flex items-center justify-between px-6 py-4">
+                    <!-- 移动端菜单按钮 -->
+                    <button
+                        @click="sidebarOpen = !sidebarOpen"
+                        class="text-gray-500 focus:outline-none md:hidden"
+                    >
+                        <i class="fas fa-bars text-xl"></i>
+                    </button>
+
+                    <!-- 搜索框 -->
+                    <div class="flex-1 mx-4">
+                        <div class="relative max-w-md">
+                            <input
+                                type="text"
+                                placeholder="搜索..."
+                                class="w-full bg-gray-100 border-0 rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            >
+                            <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
+                        </div>
+                    </div>
+
+                    <!-- 右侧图标 -->
+                    <div class="flex items-center space-x-4">
+                        <button class="relative text-gray-500 hover:text-gray-700">
+                            <i class="fas fa-bell text-xl"></i>
+                            <span class="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full"></span>
+                        </button>
+                        <button class="text-gray-500 hover:text-gray-700">
+                            <i class="fas fa-cog text-xl"></i>
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- 主要内容 -->
+            <main class="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-6">
+                <!-- 统计卡片 -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+                    <div
+                        v-for="stat in stats"
+                        :key="stat.title"
+                        class="bg-white rounded-lg shadow p-6 relative overflow-hidden"
+                    >
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-500 text-sm mb-1">{{ stat.title }}</p>
+                                <p class="text-3xl font-bold text-gray-800">{{ stat.value }}</p>
+                                <p :class="['text-sm mt-2', stat.trend > 0 ? 'text-green-500' : 'text-red-500']">
+                                    <i :class="['fas', stat.trend > 0 ? 'fa-arrow-up' : 'fa-arrow-down']"></i>
+                                    {{ Math.abs(stat.trend) }}% vs 上月
+                                </p>
+                            </div>
+                            <div
+                                :class="[
+                                    'w-16 h-16 rounded-full flex items-center justify-center text-2xl',
+                                    stat.bgColor
+                                ]"
+                            >
+                                <i :class="stat.icon"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 图表和表格区域 -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                    <!-- 销售趋势图 -->
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4">销售趋势</h3>
+                        <canvas ref="salesChart"></canvas>
+                    </div>
+
+                    <!-- 分类占比图 -->
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4">产品分类占比</h3>
+                        <canvas ref="categoryChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- 最近订单表格 -->
+                <div class="bg-white rounded-lg shadow overflow-hidden">
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <h3 class="text-lg font-semibold text-gray-800">最近订单</h3>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        订单号
+                                    </th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        客户
+                                    </th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        金额
+                                    </th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        状态
+                                    </th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        日期
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                <tr v-for="order in recentOrders" :key="order.id" class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                        #{{ order.id }}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        {{ order.customer }}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        ¥{{ order.amount }}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <span
+                                            :class="[
+                                                'px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full',
+                                                order.status === '已完成' ? 'bg-green-100 text-green-800' :
+                                                order.status === '处理中' ? 'bg-yellow-100 text-yellow-800' :
+                                                'bg-gray-100 text-gray-800'
+                                            ]"
+                                        >
+                                            {{ order.status }}
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        {{ order.date }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                // 响应式数据
+                const sidebarOpen = ref(false);
+                const currentPage = ref('dashboard');
+
+                const menuItems = [
+                    { name: 'dashboard', label: '仪表板', icon: 'fas fa-chart-line' },
+                    { name: 'orders', label: '订单管理', icon: 'fas fa-shopping-cart' },
+                    { name: 'products', label: '产品管理', icon: 'fas fa-box' },
+                    { name: 'customers', label: '客户管理', icon: 'fas fa-users' },
+                    { name: 'analytics', label: '数据分析', icon: 'fas fa-chart-bar' },
+                    { name: 'settings', label: '系统设置', icon: 'fas fa-cog' }
+                ];
+
+                const stats = [
+                    { title: '总销售额', value: '¥128,450', trend: 12.5, icon: 'fas fa-dollar-sign', bgColor: 'bg-blue-100 text-blue-600' },
+                    { title: '订单数量', value: '1,284', trend: 8.2, icon: 'fas fa-shopping-bag', bgColor: 'bg-green-100 text-green-600' },
+                    { title: '新客户', value: '342', trend: -3.1, icon: 'fas fa-user-plus', bgColor: 'bg-yellow-100 text-yellow-600' },
+                    { title: '活跃用户', value: '2,156', trend: 15.8, icon: 'fas fa-users', bgColor: 'bg-purple-100 text-purple-600' }
+                ];
+
+                const recentOrders = ref([
+                    { id: '10234', customer: '张三', amount: '1,280', status: '已完成', date: '2025-12-18' },
+                    { id: '10233', customer: '李四', amount: '2,450', status: '处理中', date: '2025-12-18' },
+                    { id: '10232', customer: '王五', amount: '890', status: '已完成', date: '2025-12-17' },
+                    { id: '10231', customer: '赵六', amount: '3,200', status: '处理中', date: '2025-12-17' },
+                    { id: '10230', customer: '孙七', amount: '1,560', status: '已完成', date: '2025-12-16' }
+                ]);
+
+                // Chart.js 引用
+                const salesChart = ref(null);
+                const categoryChart = ref(null);
+
+                // 初始化图表
+                const initCharts = () => {
+                    // 销售趋势图
+                    const salesCtx = salesChart.value.getContext('2d');
+                    new Chart(salesCtx, {
+                        type: 'line',
+                        data: {
+                            labels: ['1月', '2月', '3月', '4月', '5月', '6月'],
+                            datasets: [{
+                                label: '销售额',
+                                data: [30000, 45000, 38000, 52000, 61000, 72000],
+                                borderColor: 'rgb(99, 102, 241)',
+                                backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                                tension: 0.4,
+                                fill: true
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                legend: {
+                                    display: false
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true
+                                }
+                            }
+                        }
+                    });
+
+                    // 分类占比图
+                    const categoryCtx = categoryChart.value.getContext('2d');
+                    new Chart(categoryCtx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: ['电子产品', '服装', '食品', '图书', '其他'],
+                            datasets: [{
+                                data: [35, 25, 20, 12, 8],
+                                backgroundColor: [
+                                    'rgb(99, 102, 241)',
+                                    'rgb(34, 197, 94)',
+                                    'rgb(234, 179, 8)',
+                                    'rgb(239, 68, 68)',
+                                    'rgb(168, 85, 247)'
+                                ]
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                legend: {
+                                    position: 'bottom'
+                                }
+                            }
+                        }
+                    });
+                };
+
+                // 生命周期钩子
+                onMounted(() => {
+                    initCharts();
+                });
+
+                return {
+                    sidebarOpen,
+                    currentPage,
+                    menuItems,
+                    stats,
+                    recentOrders,
+                    salesChart,
+                    categoryChart
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
