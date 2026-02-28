@@ -5,7 +5,7 @@
 **Input**: User says "用 pencil 恢复 input.jsonl 中 pencil-new.pen 的操作"
 
 **Output**:
-1. Run `python .cursor/skills/pencil-replay/scripts/pencil_replay.py input.jsonl -f pencil-new.pen -o plan.json`
+1. Run `python skills/pencil-replay/scripts/pencil_replay.py input.jsonl -f pencil-new.pen -o plan.json`
 2. Read plan.json, call `mcp_pencil_set_variables` with variables from first step
 3. Call `mcp_pencil_batch_design` for each batch_design step in order
 
@@ -15,7 +15,7 @@
 
 **Output**:
 ```bash
-python .cursor/skills/pencil-replay/scripts/pencil_replay.py input.jsonl --output-dir extracted
+python skills/pencil-replay/scripts/pencil_replay.py input.jsonl --output-dir extracted
 ```
 Produces `extracted/variables.json` and `extracted/batch_00.txt`, `batch_01.txt`, etc.
 

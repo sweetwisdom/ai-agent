@@ -9,7 +9,7 @@ description: Restores .pen design files from Pencil conversation logs (JSONL). E
 
 ## Quick Start
 
-1. **Parse the JSONL**: Run `python .cursor/skills/pencil-replay/scripts/pencil_replay.py <input.jsonl> -f <target.pen> -o plan.json`
+1. **Parse the JSONL**: Run `python skills/pencil-replay/scripts/pencil_replay.py <input.jsonl> -f <target.pen> -o plan.json`
 2. **Execute via MCP**: Call `mcp_pencil_set_variables` then `mcp_pencil_batch_design` in order (≤25 ops per batch)
 
 ## Workflow
@@ -25,7 +25,7 @@ Task Progress:
 **Step 1: Parse**
 
 ```bash
-python .cursor/skills/pencil-replay/scripts/pencil_replay.py input.jsonl -f pencil-new.pen -o plan.json --output-dir extracted
+python skills/pencil-replay/scripts/pencil_replay.py input.jsonl -f pencil-new.pen -o plan.json --output-dir extracted
 ```
 
 Extracts `mcp__pencil__set_variables` and `mcp__pencil__batch_design` where `input.filePath` matches the target .pen.

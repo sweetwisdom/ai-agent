@@ -39,11 +39,11 @@ From project root:
 
 ```bash
 # Generate plan
-python .cursor/skills/pencil-replay/scripts/pencil_replay.py input.jsonl -f pencil-new.pen -o plan.json
+python skills/pencil-replay/scripts/pencil_replay.py input.jsonl -f pencil-new.pen -o plan.json
 
 # Extract to directory (variables.json, batch_00.txt, ...)
-python .cursor/skills/pencil-replay/scripts/pencil_replay.py input.jsonl --output-dir extracted
+python skills/pencil-replay/scripts/pencil_replay.py input.jsonl --output-dir extracted
 
 # Dry run
-python .cursor/skills/pencil-replay/scripts/pencil_replay.py input.jsonl --dry-run
+python skills/pencil-replay/scripts/pencil_replay.py input.jsonl --dry-run
 ```
